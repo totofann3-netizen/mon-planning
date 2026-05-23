@@ -802,15 +802,22 @@ function isMultiDay(e) { return !e.recurring && e.endDate && e.endDate > e.date;
 
 function eventsForDate(dateStr) {
   const dow=dowFromDate(dateStr);
+  const prevDate=fmtDate(addDays(new Date(dateStr+'T00:00:00'),-1));
+  const prevDow=(dow+6)%7;
 
   function matches(e) {
     if(e.recurring) return e.day===dow;
     if(isMultiDay(e)) return dateStr>=e.date && dateStr<=e.endDate;
     return e.date===dateStr;
   }
+  // Event passe-minuit : déborde sur le lendemain (carry-over)
+  function matchesCarryOver(e) {
+    if(!crossesMidnight(e)||isMultiDay(e)) return false;
+    return e.recurring ? e.day===prevDow : e.date===prevDate;
+  }
 
-  const own=events.filter(matches).map(e=>({...e,owner:'me'}));
-  const prt=partnerEvents.filter(matches).map(e=>({...e,owner:'partner'}));
+  const own=events.filter(e=>matches(e)||matchesCarryOver(e)).map(e=>({...e,owner:'me'}));
+  const prt=partnerEvents.filter(e=>matches(e)||matchesCarryOver(e)).map(e=>({...e,owner:'partner'}));
   return [...own,...prt].sort((a,b)=>a.startHour-b.startHour);
 }
 
@@ -896,19 +903,26 @@ function renderDay(col, dateStr) {
   eventsForDate(dateStr).forEach(evt=>{
     // Détecter le rôle de ce jour dans l'event
     const multiDay = isMultiDay(evt);
-    const isFirstDay = multiDay && dateStr===evt.date;
-    const isLastDay  = multiDay && dateStr===evt.endDate;
-    const isMiddleDay= multiDay && !isFirstDay && !isLastDay;
+    const isFirstDay  = multiDay && dateStr===evt.date;
+    const isLastDay   = multiDay && dateStr===evt.endDate;
+    const isMiddleDay = multiDay && !isFirstDay && !isLastDay;
+    const prevDate2   = fmtDate(addDays(new Date(dateStr+'T00:00:00'),-1));
+    const prevDow2    = (dowFromDate(dateStr)+6)%7;
+    const isCarryOver = !multiDay && crossesMidnight(evt) &&
+                        (evt.recurring ? evt.day===prevDow2 : evt.date===prevDate2);
 
     let dStart, dEnd;
-    if(isMiddleDay){
+    if(isCarryOver){
+      // Déborde depuis la veille : s'affiche de 0h à endHour
+      dStart = START_HOUR; dEnd = evt.endHour||0.5;
+    } else if(isMiddleDay){
       dStart = START_HOUR; dEnd = END_HOUR;
     } else if(isFirstDay){
       dStart = evt.startHour; dEnd = END_HOUR;
     } else if(isLastDay){
       dStart = START_HOUR; dEnd = evt.endHour||END_HOUR;
     } else {
-      // Event normal (1 jour, éventuellement passe minuit)
+      // Event normal : si passe minuit, s'arrête à 24h sur ce jour
       dStart = evt.startHour;
       dEnd   = evt.endHour > evt.startHour ? evt.endHour : END_HOUR;
     }
