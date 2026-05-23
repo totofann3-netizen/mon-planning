@@ -118,6 +118,14 @@ body {
 .event-time  { font-size: .6rem; color: #6d6d72; }
 .event-owner { font-size: .58rem; color: #8e8e93; }
 
+.cat-perso   { background: var(--cat-perso-bg,   rgba(52,199,89,.12)); }
+.cat-travail { background: var(--cat-travail-bg, rgba(0,122,255,.12)); }
+.cat-etudes  { background: var(--cat-etudes-bg,  rgba(255,149,0,.12)); }
+.cat-foi     { background: var(--cat-foi-bg,     rgba(88,86,214,.12)); }
+.cat-sport   { background: var(--cat-sport-bg,   rgba(255,45,85,.12)); }
+.cat-autres  { background: var(--cat-autres-bg,  rgba(175,82,222,.12)); }
+.cat-partner { background: var(--partner-bg,     rgba(255,149,0,.12)); }
+
 .cat-perso   .event-banner { background: var(--cat-perso-border,   #34c759); }
 .cat-travail .event-banner { background: var(--cat-travail-border,  #007aff); }
 .cat-etudes  .event-banner { background: var(--cat-etudes-border,   #ff9500); }
@@ -565,7 +573,9 @@ function saveCatColors() { try { localStorage.setItem('edt_cat_colors',JSON.stri
 
 function applyCatColors() {
   Object.entries(catColors).forEach(([cat,hex]) => {
+    const {r,g,b} = hexToRgb(hex);
     document.documentElement.style.setProperty(`--cat-${cat}-border`, hex);
+    document.documentElement.style.setProperty(`--cat-${cat}-bg`, `rgba(${r},${g},${b},.12)`);
   });
 }
 
