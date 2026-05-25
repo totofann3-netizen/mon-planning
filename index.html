@@ -722,6 +722,12 @@ a:hover { text-decoration: underline; }
 /* ============================================================
    MAIN ROW
    ============================================================ */
+#mainApp {
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
 .main-row {
   flex: 1;
   display: flex;
@@ -2779,12 +2785,23 @@ const fromDb = row => ({
   date:row.date, endDate:row.end_date||null, reminder:row.reminder||0,
   notes:row.notes||''
 });
+function dayValToDate(dayVal) {
+  const base=new Date(); const cur=(base.getDay()+6)%7;
+  const diff=(dayVal-cur+7)%7;
+  return fmtDate(addDays(base,diff));
+}
 const toDb = (evt,userId) => {
+  // Convert boolean recurring (from checkbox) to string type for DB
+  let recurringVal = evt.recurring;
+  if(recurringVal===true) recurringVal='weekly';
+  else if(recurringVal===false||recurringVal===undefined) recurringVal=null;
+  // For recurring events derive a concrete date from day-of-week
+  const dateVal = recurringVal ? (evt.date||dayValToDate(evt.day||0)) : (evt.date||null);
   const d = {
-    user_id:userId, title:evt.title, day:evt.day??null,
+    user_id:userId, title:evt.title,
     start_hour:evt.startHour, end_hour:evt.endHour,
-    category:evt.category, recurring:evt.recurring,
-    date:evt.date||null, end_date:evt.endDate||null, reminder:evt.reminder||0
+    category:evt.category, recurring:recurringVal,
+    date:dateVal, end_date:evt.endDate||null, reminder:evt.reminder||0
   };
   if (evt.notes !== undefined) d.notes = evt.notes||null;
   return d;
@@ -3005,12 +3022,16 @@ async function createEvent(evt) { const {data,error}=await sb.from('events').ins
 async function updateEvent(id,changes) {
   const d={};
   if(changes.title!==undefined)     d.title=changes.title;
-  if(changes.day!==undefined)       d.day=changes.day;
   if(changes.startHour!==undefined) d.start_hour=changes.startHour;
   if(changes.endHour!==undefined)   d.end_hour=changes.endHour;
   if(changes.category!==undefined)  d.category=changes.category;
-  if(changes.recurring!==undefined) d.recurring=changes.recurring;
+  if(changes.recurring!==undefined) {
+    let r=changes.recurring;
+    if(r===true) r='weekly'; else if(r===false) r=null;
+    d.recurring=r;
+  }
   if(changes.date!==undefined)      d.date=changes.date;
+  if(changes.endDate!==undefined)   d.end_date=changes.endDate||null;
   if(changes.reminder!==undefined)  d.reminder=changes.reminder;
   if(changes.notes!==undefined)     d.notes=changes.notes||null;
   await sb.from('events').update(d).eq('id',id);
@@ -3043,18 +3064,29 @@ function viewDates() {
 }
 function crossesMidnight(e) { return e.endHour<e.startHour||e.endHour===0; }
 function isMultiDay(e) { return !e.recurring&&e.endDate&&e.endDate>e.date; }
+function recurringDow(e) {
+  // For old-style (recurring='weekly', date=ISO string), derive DOW from date.
+  // For new-style (day=number), use day field.
+  if(e.day!==undefined&&e.day!==null) return e.day;
+  if(e.date) return (new Date(e.date+'T00:00:00').getDay()+6)%7;
+  return -1;
+}
 function eventsForDate(dateStr) {
   const dow=dowFromDate(dateStr);
   const prevDate=fmtDate(addDays(new Date(dateStr+'T00:00:00'),-1));
   const prevDow=(dow+6)%7;
   function matches(e) {
-    if(e.recurring) return e.day===dow;
+    if(e.recurring) {
+      if(e.recurring==='daily') return true;
+      return recurringDow(e)===dow;
+    }
     if(isMultiDay(e)) return dateStr>=e.date&&dateStr<=e.endDate;
     return e.date===dateStr;
   }
   function matchesCarryOver(e) {
     if(!crossesMidnight(e)||isMultiDay(e)) return false;
-    return e.recurring?e.day===prevDow:e.date===prevDate;
+    if(e.recurring) return recurringDow(e)===prevDow;
+    return e.date===prevDate;
   }
   const own=events.filter(e=>matches(e)||matchesCarryOver(e)).map(e=>({...e,owner:'me'}));
   const prt=who==='couple'?partnerEvents.filter(e=>matches(e)||matchesCarryOver(e)).map(e=>({...e,owner:'partner'})):[];
@@ -3296,8 +3328,7 @@ function addDropHandlers(slotEl) {
     let newStart=Math.round((slotHour-duration*dragGrabFraction)*2)/2;
     newStart=Math.max(START_HOUR,Math.min(END_HOUR-duration,newStart));
     const newEnd=newStart+duration;
-    const newDay=dowFromDate(slotDate);
-    const updates={startHour:newStart,endHour:newEnd,day:newDay};
+    const updates={startHour:newStart,endHour:newEnd};
     if(!dragEvt.recurring) updates.date=slotDate;
     await updateEvent(dragEvt.id,updates); dragEvt=null;
     render(); scheduleAll(); toast('Événement déplacé');
@@ -3445,11 +3476,13 @@ function openEdit(evt, dateStr, focusNotes=false) {
   editingId=evt.id;
   document.getElementById('modalTitle').textContent='Modifier l\'événement';
   document.getElementById('evtTitle').value=evt.title;
-  document.getElementById('evtDay').value=evt.day??dowFromDate(dateStr);
+  // Use day field if set (new style), else derive from date (old style)
+  const dayForForm = (evt.day!==undefined&&evt.day!==null) ? evt.day : dowFromDate(evt.date||dateStr);
+  document.getElementById('evtDay').value=dayForForm;
   document.getElementById('evtStart').value=toHHMM(evt.startHour);
   document.getElementById('evtEnd').value=toHHMM(evt.endHour);
   document.getElementById('evtCat').value=evt.category;
-  document.getElementById('evtRecurring').checked=!!evt.recurring;
+  document.getElementById('evtRecurring').checked=!!(evt.recurring&&evt.recurring!=='false');
   document.getElementById('evtDate').value=evt.date||dateStr;
   document.getElementById('evtEndDate').value=evt.endDate||'';
   document.getElementById('evtReminder').value=evt.reminder||'0';
@@ -3515,7 +3548,9 @@ document.getElementById('saveBtn').addEventListener('click',async()=>{
   const reminder=parseInt(document.getElementById('evtReminder').value);
   const notes=document.getElementById('notesTextarea')?.value||'';
   if(endHour===startHour){toast('L\'heure de fin doit être différente du début');return;}
-  const evtData={title,day:dayVal,startHour,endHour,category,recurring,date:recurring?null:date,endDate:recurring?null:endDate,reminder,notes};
+  // For recurring events, derive a concrete ISO date from the selected day-of-week
+  const recurringDate=recurring?dayValToDate(dayVal):null;
+  const evtData={title,day:dayVal,startHour,endHour,category,recurring:recurring?'weekly':null,date:recurring?recurringDate:date,endDate:recurring?null:endDate,reminder,notes};
   if(editingId){await updateEvent(editingId,evtData);toast('Événement modifié');}
   else{await createEvent(evtData);toast('Événement ajouté');}
   closeModal(); render(); scheduleAll(); saveCache(myProfile.id);
