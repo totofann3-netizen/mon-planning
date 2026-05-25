@@ -2286,7 +2286,7 @@ a:hover { text-decoration: underline; }
 
     <div class="who-tabs">
       <button class="who-tab active" id="whoMoi">Moi</button>
-      <button class="who-tab" id="whoCoupleBtn">Léa &amp; moi</button>
+      <button class="who-tab" id="whoCoupleBtn">Couple</button>
     </div>
 
     <div class="topbar-spacer"></div>
@@ -2618,7 +2618,7 @@ a:hover { text-decoration: underline; }
   </div>
   <div class="ctx-item">
     <span class="ctx-item-icon">🤝</span>
-    <span class="ctx-item-label">Partager avec Léa</span>
+    <span class="ctx-item-label" id="ctxPartagerLabel">Partager</span>
   </div>
   <div class="ctx-separator"></div>
   <div class="ctx-item danger">
@@ -3002,6 +3002,13 @@ function updateHeaderProfile() {
   if(!myProfile)return;
   const av=document.getElementById('profileAvatar');
   if(av){ av.textContent=initial(myProfile.name); av.style.background=myProfile.color||'var(--accent)'; }
+}
+function updatePartnerBtn() {
+  const btn=document.getElementById('whoCoupleBtn');
+  const lbl=document.getElementById('ctxPartagerLabel');
+  const name=partnerProfile?.name||null;
+  if(btn) btn.textContent=name?`${name} & moi`:'Couple';
+  if(lbl) lbl.textContent=name?`Partager avec ${name}`:'Partager';
 }
 function updateLegend() {
   const legend=document.getElementById('legend');
@@ -3751,7 +3758,7 @@ document.getElementById('linkPartnerBtn').addEventListener('click',async()=>{
   await sb.from('profiles').update({partner_id:match.id}).eq('id',myProfile.id);
   await sb.from('profiles').update({partner_id:myProfile.id}).eq('id',match.id);
   myProfile.partner_id=match.id; partnerProfile=match;
-  applyPartnerColors(); updateLegend(); await loadPartnerEvents(); setWho('couple'); render();
+  applyPartnerColors(); updateLegend(); updatePartnerBtn(); await loadPartnerEvents(); setWho('couple'); render();
   document.getElementById('profileModal').style.display='none';
   toast(`Planning partagé avec ${match.name} !`);
 });
@@ -3760,7 +3767,7 @@ document.getElementById('unlinkBtn').addEventListener('click',async()=>{
   await sb.from('profiles').update({partner_id:null}).eq('id',myProfile.id);
   await sb.from('profiles').update({partner_id:null}).eq('id',partnerProfile.id);
   myProfile.partner_id=null; partnerProfile=null; partnerEvents=[];
-  setWho('moi'); updateLegend(); render();
+  setWho('moi'); updateLegend(); updatePartnerBtn(); render();
   document.getElementById('profileModal').style.display='none';
   toast('Planning délié');
 });
@@ -3865,7 +3872,7 @@ async function startApp(userId) {
     await loadProfile(userId);
     await Promise.all([loadPartner(),loadEvents(),loadTodos()]);
     await loadPartnerEvents();
-    applyPartnerColors(); updateHeaderProfile(); updateLegend();
+    applyPartnerColors(); updateHeaderProfile(); updateLegend(); updatePartnerBtn();
     render(); saveCache(userId);
     if(!hasCached){scrollToNow();showApp();}
     requestNotifPermission().then(scheduleAll);
